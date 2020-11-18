@@ -4,6 +4,9 @@ import tensorflow as tf
 import datetime
 import argparse
 
+from pythonosc import osc_message_builder
+from pythonosc import udp_client
+
 detection_graph, sess = detector_utils.load_inference_graph()
 
 if __name__ == '__main__':
@@ -64,9 +67,23 @@ if __name__ == '__main__':
         type=int,
         default=5,
         help='Size of the queue.')
+    parser.add_argument(
+        '-i',
+        '--ip',
+        dest='ip',
+        type=str,
+        default="localhost",
+        help='IP address')
+    parser.add_argument(
+        '-p',
+        '--port',
+        dest='port',
+        type=str,
+        default="5005",
+        help='Size of the queue.')
     args = parser.parse_args()
 
-    cap = cv2.VideoCapture(args.video_source)
+    cap = cv2.VideoCapture(int(args.video_source))
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
 
@@ -77,6 +94,8 @@ if __name__ == '__main__':
     num_hands_detect = 2
 
     cv2.namedWindow('Single-Threaded Detection', cv2.WINDOW_NORMAL)
+
+    client = udp_client.SimpleUDPClient(args.ip, int(args.port))
 
     while True:
         # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
@@ -103,6 +122,23 @@ if __name__ == '__main__':
         num_frames += 1
         elapsed_time = (datetime.datetime.now() - start_time).total_seconds()
         fps = num_frames / elapsed_time
+
+
+        for i in range(num_hands_detect):
+            if (scores[i] > args.score_thresh):
+                (left, right, top, bottom) = (boxes[i][1] * im_width, boxes[i][3] * im_width,
+                                              boxes[i][0] * im_height, boxes[i][2] * im_height)
+                p1 = (int(left), int(top))
+                p2 = (int(right), int(bottom))
+                center = (p1[0] * 0.5 + p2[0], p1[1] * 0.5 + p2[1])
+
+                print(center[0], center[1])
+
+                client.send_message("/HandPositionX", int(center[0]))
+                client.send_message("/HandPositionY", int(center[1]))
+
+                break
+
 
         if (args.display > 0):
             # Display FPS on frame
